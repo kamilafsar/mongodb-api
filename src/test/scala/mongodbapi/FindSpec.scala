@@ -11,13 +11,17 @@ import scala.concurrent.{Await, Future}
 
 
 trait Expression {
-  def &&(exp2: Expression) = Expression.&&(this, exp2)
+  // syntactic sugar
+  def &&(exp2: Expression) = Expression.$and(this, exp2)
+  def ||(exp2: Expression) = Expression.$or(this, exp2)
 }
 object Expression {
   case class $eq[T](field: Field[T], value: T) extends Expression
   case class $in[T](field: Field[T], values: Iterable[T]) extends Expression
-  case class &&[T](exp1: Expression, exp2: Expression) extends Expression
   case class $elemMatch[T](field: Field[T], exp: Expression) extends Expression
+
+  case class $and[T](exp1: Expression, exp2: Expression) extends Expression
+  case class $or[T](exp1: Expression, exp2: Expression) extends Expression
 }
 
 trait Document[T]
