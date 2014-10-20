@@ -45,9 +45,26 @@ abstract class DocumentField[T, Self](name: String) extends Field[T](name) with 
  * API
  */
 
+case class FindQuery(criteria: reactivemongo.bson.BSONDocument, projection: Option[reactivemongo.bson.BSONDocument])
+
+class QueryGenerator[T, D <: Document[T]](implicit documentBuilder: DocumentBuilder[T, D]) {
+
+  def find(query: D => Expression): FindQuery = ???
+
+}
+
 class Collection[T, D <: Document[T]](collectionName: String)
                                      (implicit documentBuilder: DocumentBuilder[T, D]) {
-  def find(query: D => Expression): Future[List[T]] = Future.successful(Nil)
+
+  private val queryGenerator = new QueryGenerator[T, D]
+
+  def find(query: D => Expression)(implicit ec: scala.concurrent.ExecutionContext): Future[List[T]] = {
+    queryGenerator.find(query) match {
+      case FindQuery(criteria, Some(projection)) => //collection.find(criteria, projection)
+      case FindQuery(criteria, None) => // collection.find(criteria)
+    }
+    ???
+  }
 }
 
 trait DocumentBuilder[T, D <: Document[T]] {
