@@ -1,75 +1,9 @@
 package mongodbapi
 
-import org.scalatest._
-
+import reactivemongo.bson._
+import org.specs2.mutable.Specification
 import scala.concurrent.duration._
 import scala.concurrent.{Await, Future}
-
-/**
- * Abstracts for Document
- */
-
-
-trait Expression {
-  // syntactic sugar
-  def &&(exp2: Expression) = Expression.$and(this, exp2)
-  def ||(exp2: Expression) = Expression.$or(this, exp2)
-}
-object Expression {
-  case class $eq[T](field: Field[T], value: T) extends Expression
-  case class $in[T](field: Field[T], values: Iterable[T]) extends Expression
-  case class $elemMatch[T](field: Field[T], exp: Expression) extends Expression
-
-  case class $and[T](exp1: Expression, exp2: Expression) extends Expression
-  case class $or[T](exp1: Expression, exp2: Expression) extends Expression
-}
-
-trait Document[T]
-
-class Field[T](name: String) {
-  def $eq(value: T) = Expression.$eq(this, value)
-  def $in(values: Iterable[T]) = Expression.$in(this, values)
-}
-
-abstract class ArrayField[T, Self](name: String) extends Field[T](name) {
-  val self: Self
-  def $elemMatch(query: Self => Expression) = Expression.$elemMatch(this, query(self))
-}
-
-abstract class DocumentField[T, Self](name: String) extends Field[T](name) with Document[T] {
-  val self: Self
-}
-
-
-/**
- * API
- */
-
-case class FindQuery(criteria: reactivemongo.bson.BSONDocument, projection: Option[reactivemongo.bson.BSONDocument])
-
-class QueryGenerator[T, D <: Document[T]](implicit documentBuilder: DocumentBuilder[T, D]) {
-
-  def find(query: D => Expression): FindQuery = ???
-
-}
-
-class Collection[T, D <: Document[T]](collectionName: String)
-                                     (implicit documentBuilder: DocumentBuilder[T, D]) {
-
-  private val queryGenerator = new QueryGenerator[T, D]
-
-  def find(query: D => Expression)(implicit ec: scala.concurrent.ExecutionContext): Future[List[T]] = {
-    queryGenerator.find(query) match {
-      case FindQuery(criteria, Some(projection)) => //collection.find(criteria, projection)
-      case FindQuery(criteria, None) => // collection.find(criteria)
-    }
-    ???
-  }
-}
-
-trait DocumentBuilder[T, D <: Document[T]] {
-  def build(obj: T): D
-}
 
 /**
  * Concrete domain
@@ -83,48 +17,87 @@ case class Company(name: String, country: String)
  * Macro-Generated Documents
  */
 
+object ImplicitWriters {
+  implicit val propertyWriter = Macros.handler[Property]
+  implicit val companyWriter = Macros.handler[Company]
+  implicit val productWriter = Macros.handler[Product]
+}
+
+import ImplicitWriters._
+
 class ProductDocument extends Document[Product] {
-  val _id = new Field[Int]("_id")
-  val name = new Field[String]("name")
-  val properties = new PropertyArray
-  val madeBy = new CompanyDocument
+  val _id = new Field[Int, BSONInteger]("_id", None)
+  val name = new Field[String, BSONString]("name", None)
+  val properties = new ArrayField[List[Property], PropertyDocument.type, Property, BSONDocument]("properties", None, PropertyDocument) {}
+  val madeBy = CompanyDocument
 }
 
-class PropertyArray extends ArrayField[Property, PropertyArray]("properties") {
-  val self: PropertyArray = this
-  val name = new Field[String]("name")
-  val value = new Field[String]("value")
+object PropertyDocument extends DocumentField[Property]("properties", None) {
+  val name = new Field[String, BSONString]("name", subfieldAncestors)
+  val value = new Field[String, BSONString]("value", subfieldAncestors)
 }
 
-class CompanyDocument extends DocumentField[Company, CompanyDocument]("madeBy") {
-  val self: CompanyDocument = this
-  val name = new Field[String]("name")
-  val country = new Field[String]("country")
+object CompanyDocument extends DocumentField[Company]("madeBy", None) {
+  val name = new Field[String, BSONString]("name", subfieldAncestors)
+  val country = new Field[String, BSONString]("country", subfieldAncestors)
 }
 
-class FindSpec extends FlatSpec with Matchers {
+class FindSpec extends Specification with BSONDocumentMatchers {
+
+  /**
+   * I want this syntax:
+   *
+   * val result = products.find({ product =>
+   *   (product.name $eq "TV") &&
+   *   (product.madeBy.name $in (List("Samsung", "Philips"))) &&
+   *   (product.properties $elemMatch { property =>
+   *     (property.name $eq "diagonal") &&
+   *     (property.value $eq "40")
+   *   })
+   * })
+   *
+   */
+
 
   def resultOf[T](fut: Future[T]): T = Await.result(fut, Duration(60, SECONDS))
 
-  "Collection" must "find documents" in {
-
-    val products = {
-      implicit val productDocBuilder = new DocumentBuilder[Product, ProductDocument] {
-        def build(obj: Product) = new ProductDocument
-      }
-      new Collection[Product, ProductDocument]("products")
+  val queryGenerator = {
+    implicit val productDocBuilder = new DocumentBuilder[Product, ProductDocument] {
+      def build[Product] = new ProductDocument
     }
+    new QueryGenerator[Product, ProductDocument]
+  }
 
-    val result = products.find({ product =>
+  "Collection must find documents" in {
+
+    val query = { product: ProductDocument =>
       (product.name $eq "TV") &&
       (product.madeBy.name $in (List("Samsung", "Philips"))) &&
       (product.properties $elemMatch { property =>
         (property.name $eq "diagonal") &&
         (property.value $eq "40")
       })
-    })
+    }
 
-    resultOf(result) shouldEqual Nil
+    val FindQuery(criteria, projection) = queryGenerator.find(query)
+
+
+    println(BSONDocument.pretty(criteria))
+
+
+
+    criteria must bsonEqualTo(BSONDocument(
+      "$and" -> BSONArray(
+        BSONDocument("name" -> "TV"),
+        BSONDocument("madeBy.name" -> BSONDocument("$in" -> BSONArray("Samsung", "Philips"))),
+        BSONDocument("properties" -> BSONDocument(
+          "$elemMatch" -> BSONDocument(
+            "name" -> "diagonal",
+            "value" -> "40"
+          )
+        ))
+      )
+    ))
 
   }
 
