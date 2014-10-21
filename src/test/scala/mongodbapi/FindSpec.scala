@@ -1,5 +1,6 @@
-package mongodbapi
+package tests
 
+import mongodbapi._
 import reactivemongo.bson._
 import org.specs2.mutable.Specification
 import scala.concurrent.duration._
@@ -9,7 +10,7 @@ import scala.concurrent.{Await, Future}
  * Concrete domain
  */
 
-case class Product(_id: Int, name: String, properties: List[Property], madeBy: Company)
+case class Product(_id: Int, name: String, properties: List[Property], madeBy: Company, sizes: List[Int])
 case class Property(name: String, value: String)
 case class Company(name: String, country: String)
 
@@ -17,30 +18,32 @@ case class Company(name: String, country: String)
  * Macro-Generated Documents
  */
 
-object ImplicitWriters {
-  implicit val propertyWriter = Macros.handler[Property]
-  implicit val companyWriter = Macros.handler[Company]
-  implicit val productWriter = Macros.handler[Product]
+trait PropertyDocumentMetadata {
+  val name = new Field[String, BSONString]("name")
+  val value = new Field[String, BSONString]("value")
 }
 
-import ImplicitWriters._
-
-class ProductDocument extends Document[Product] {
-  val _id = new Field[Int, BSONInteger]("_id", None)
-  val name = new Field[String, BSONString]("name", None)
-  val properties = new ArrayField[List[Property], PropertyDocument.type, Property, BSONDocument]("properties", None, PropertyDocument) {}
-  val madeBy = CompanyDocument
+trait CompanyDocumentMetadata {
+  val name = new Field[String, BSONString]("name")
+  val country = new Field[String, BSONString]("country")
 }
 
-object PropertyDocument extends DocumentField[Property]("properties", None) {
-  val name = new Field[String, BSONString]("name", subfieldAncestors)
-  val value = new Field[String, BSONString]("value", subfieldAncestors)
+trait Noop
+
+trait ProductDocumentMetadata {
+  val _id = new Field[Int, BSONInteger]("_id")
+  val name = new Field[String, BSONString]("name")
+  val properties = new ArrayField[List[Property], Property, BSONDocument, PropertyDocumentMetadata]("properties") with PropertyDocumentMetadata
+  val madeBy = new DocumentField[Company]("madeBy") with CompanyDocumentMetadata
+  val sizes = new ArrayField[List[Int], Int, BSONInteger, Noop]("sizes") with Noop
 }
 
-object CompanyDocument extends DocumentField[Company]("madeBy", None) {
-  val name = new Field[String, BSONString]("name", subfieldAncestors)
-  val country = new Field[String, BSONString]("country", subfieldAncestors)
-}
+class ProductDocument(implicit writer: BSONWriter[Product, BSONDocument],
+                               propertyWriter: BSONWriter[Property, BSONDocument],
+                               companyWriter: BSONWriter[Company, BSONDocument])
+  extends TypeMetadata[Product]
+  with ProductDocumentMetadata
+
 
 class FindSpec extends Specification with BSONDocumentMatchers {
 
@@ -58,25 +61,24 @@ class FindSpec extends Specification with BSONDocumentMatchers {
    *
    */
 
-
   def resultOf[T](fut: Future[T]): T = Await.result(fut, Duration(60, SECONDS))
 
-  val queryGenerator = {
-    implicit val productDocBuilder = new DocumentBuilder[Product, ProductDocument] {
-      def build[Product] = new ProductDocument
-    }
-    new QueryGenerator[Product, ProductDocument]
-  }
+  implicit val propertyWriter = Macros.handler[Property]
+  implicit val companyWriter = Macros.handler[Company]
+  implicit val productWriter = Macros.handler[Product]
+
+  val queryGenerator = new QueryGenerator[ProductDocument](new ProductDocument)
 
   "Collection must find documents" in {
 
     val query = { product: ProductDocument =>
       (product.name $eq "TV") &&
-      (product.madeBy.name $in (List("Samsung", "Philips"))) &&
+      (product.madeBy.name $in ("Samsung", "Philips")) &&
       (product.properties $elemMatch { property =>
         (property.name $eq "diagonal") &&
         (property.value $eq "40")
-      })
+      }) &&
+      (product.properties.value $eq "red")
     }
 
     val FindQuery(criteria, projection) = queryGenerator.find(query)
@@ -84,7 +86,20 @@ class FindSpec extends Specification with BSONDocumentMatchers {
 
     println(BSONDocument.pretty(criteria))
 
-
+    println(BSONDocument.pretty(BSONDocument(
+      "$and" -> BSONArray(
+        BSONDocument("name" -> "TV"),
+        BSONDocument("madeBy.name" -> BSONDocument("$in" -> BSONArray("Samsung", "Philips"))),
+        BSONDocument("properties" -> BSONDocument(
+          "$elemMatch" -> BSONDocument(
+            "$and" -> BSONArray(
+              BSONDocument("name" -> "diagonal"),
+              BSONDocument("value" -> "40")
+            ))
+        )),
+        BSONDocument("properties.value" -> "red")
+      )
+    )))
 
     criteria must bsonEqualTo(BSONDocument(
       "$and" -> BSONArray(
@@ -92,10 +107,12 @@ class FindSpec extends Specification with BSONDocumentMatchers {
         BSONDocument("madeBy.name" -> BSONDocument("$in" -> BSONArray("Samsung", "Philips"))),
         BSONDocument("properties" -> BSONDocument(
           "$elemMatch" -> BSONDocument(
-            "name" -> "diagonal",
-            "value" -> "40"
-          )
-        ))
+            "$and" -> BSONArray(
+              BSONDocument("name" -> "diagonal"),
+              BSONDocument("value" -> "40")
+          ))
+        )),
+        BSONDocument("properties.value" -> "red")
       )
     ))
 
