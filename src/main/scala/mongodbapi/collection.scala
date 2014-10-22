@@ -35,7 +35,7 @@ case class FindQuery(criteria: BSONDocument, projection: Option[BSONDocument])
 //  }
 //}
 
-class QueryGenerator[D <: TypeMetadata[_]](document: D) {
+class QueryGenerator[D <: TypeMetadata[_, _]](document: D) {
 
   def find(query: D => Expression): FindQuery = {
     FindQuery(query(document).toBSON, None)

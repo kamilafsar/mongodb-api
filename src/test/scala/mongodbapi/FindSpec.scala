@@ -17,33 +17,32 @@ case class Company(name: String, country: String)
 /**
  * Macro-Generated Documents
  */
+object generated {
 
-trait PropertyDocumentMetadata {
-  val name = new Field[String, BSONString]("name")
-  val value = new Field[String, BSONString]("value")
+  trait PropertyDocumentMetadata extends TypeMetadata[Property, BSONDocument] {
+    val name = new Field[String, BSONString]("name")
+    val value = new Field[String, BSONString]("value")
+  }
+
+  trait CompanyDocumentMetadata extends TypeMetadata[Company, BSONDocument] {
+    val name = new Field[String, BSONString]("name")
+    val country = new Field[String, BSONString]("country")
+  }
+
+  trait ProductDocumentMetadata extends TypeMetadata[Product, BSONDocument] {
+    val _id = new Field[Int, BSONInteger]("_id")
+    val name = new Field[String, BSONString]("name")
+    val properties = new ArrayField[List[Property], Property, BSONDocument, PropertyDocumentMetadata]("properties") with PropertyDocumentMetadata
+    val madeBy = new Field[Company, BSONDocument]("madeBy") with CompanyDocumentMetadata
+    val sizes = new ArrayField[List[Int], Int, BSONInteger, IntTypeMetadata]("sizes") with IntTypeMetadata
+  }
+
+  class ProductDocument(implicit writer: BSONWriter[Product, BSONDocument],
+                        propertyWriter: BSONWriter[Property, BSONDocument],
+                        companyWriter: BSONWriter[Company, BSONDocument])
+    extends ProductDocumentMetadata
+
 }
-
-trait CompanyDocumentMetadata {
-  val name = new Field[String, BSONString]("name")
-  val country = new Field[String, BSONString]("country")
-}
-
-trait Noop
-
-trait ProductDocumentMetadata {
-  val _id = new Field[Int, BSONInteger]("_id")
-  val name = new Field[String, BSONString]("name")
-  val properties = new ArrayField[List[Property], Property, BSONDocument, PropertyDocumentMetadata]("properties") with PropertyDocumentMetadata
-  val madeBy = new DocumentField[Company]("madeBy") with CompanyDocumentMetadata
-  val sizes = new ArrayField[List[Int], Int, BSONInteger, Noop]("sizes") with Noop
-}
-
-class ProductDocument(implicit writer: BSONWriter[Product, BSONDocument],
-                               propertyWriter: BSONWriter[Property, BSONDocument],
-                               companyWriter: BSONWriter[Company, BSONDocument])
-  extends TypeMetadata[Product]
-  with ProductDocumentMetadata
-
 
 class FindSpec extends Specification with BSONDocumentMatchers {
 
@@ -60,6 +59,8 @@ class FindSpec extends Specification with BSONDocumentMatchers {
    * })
    *
    */
+
+  import generated._
 
   def resultOf[T](fut: Future[T]): T = Await.result(fut, Duration(60, SECONDS))
 
@@ -78,7 +79,10 @@ class FindSpec extends Specification with BSONDocumentMatchers {
         (property.name $eq "diagonal") &&
         (property.value $eq "40")
       }) &&
-      (product.properties.value $eq "red")
+      (product.properties.value $eq "red") &&
+      (product.sizes $eq 10) &&
+      (product.sizes $eq List(10, 20, 30)) &&
+      (product.sizes $elemMatch { x => x $eq 10 })
     }
 
     val FindQuery(criteria, projection) = queryGenerator.find(query)
