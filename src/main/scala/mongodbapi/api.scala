@@ -211,7 +211,7 @@ package mongodbapi {
 
   trait DocumentTypeMetadata[T] extends TypeMetadata[T, BSONDocument]
 
-  sealed trait NativeTypeMetadata[T, B <: BSONValue] extends TypeMetadata[T, B]
+  sealed trait NativeArrayElementTypeMetadata[T, B <: BSONValue] extends TypeMetadata[T, B]
 
   sealed trait BaseField {
     self: TypeMetadata[_, _] =>
@@ -225,18 +225,18 @@ package mongodbapi {
   }
 
 
-  trait BSONObjectIDTypeMetadata extends NativeTypeMetadata[BSONObjectID, BSONObjectID]
-  trait StringTypeMetadata extends NativeTypeMetadata[String, BSONString]
-  trait IntTypeMetadata extends NativeTypeMetadata[Int, BSONInteger]
-  trait LongTypeMetadata extends NativeTypeMetadata[Long, BSONLong]
-  trait DoubleTypeMetadata extends NativeTypeMetadata[Double, BSONDouble]
-  trait BooleanTypeMetadata extends NativeTypeMetadata[Boolean, BSONBoolean]
+  trait BSONObjectIDArrayElementTypeMetadata extends NativeArrayElementTypeMetadata[BSONObjectID, BSONObjectID]
+  trait StringArrayElementTypeMetadata extends NativeArrayElementTypeMetadata[String, BSONString]
+  trait IntArrayElementTypeMetadata extends NativeArrayElementTypeMetadata[Int, BSONInteger]
+  trait LongArrayElementTypeMetadata extends NativeArrayElementTypeMetadata[Long, BSONLong]
+  trait DoubleArrayElementTypeMetadata extends NativeArrayElementTypeMetadata[Double, BSONDouble]
+  trait BooleanArrayElementTypeMetadata extends NativeArrayElementTypeMetadata[Boolean, BSONBoolean]
 
 }
 
 package object mongodbapi {
 
-  implicit class NativeTypeMetadataQuery[T, B <: BSONValue](field: NativeTypeMetadata[T, B])(implicit writer: BSONWriter[T, B]) {
+  implicit class NativeArrayElementTypeMetadataQuery[T, B <: BSONValue](field: NativeArrayElementTypeMetadata[T, B])(implicit writer: BSONWriter[T, B]) {
     def ->(value: T): Expression = new Expression {
       def toBSON: BSONDocument = BSONDocument(Seq("$eq" -> writer.write(value)))
     }

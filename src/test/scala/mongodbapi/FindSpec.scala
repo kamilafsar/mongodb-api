@@ -34,7 +34,7 @@ object generated {
     val name = new Field[String, BSONString]("name")
     val properties = new ArrayField[List[Property], Property, BSONDocument, PropertyDocumentMetadata]("properties") with PropertyDocumentMetadata
     val madeBy = new Field[Company, BSONDocument]("madeBy") with CompanyDocumentMetadata
-    val sizes = new ArrayField[List[Int], Int, BSONInteger, IntTypeMetadata]("sizes") with IntTypeMetadata
+    val sizes = new ArrayField[List[Int], Int, BSONInteger, IntArrayElementTypeMetadata]("sizes") with IntArrayElementTypeMetadata
   }
 
   class ProductDocument(implicit writer: BSONWriter[Product, BSONDocument],
