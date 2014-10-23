@@ -20,3 +20,7 @@ libraryDependencies ++= Seq(
 	"com.typesafe.akka" %% "akka-actor" % "2.3.3",
 	"org.reactivemongo" %% "reactivemongo" % "0.11.0-SNAPSHOT"
 )
+
+instrumentSettings
+
+CoverallsPlugin.coverallsSettings
