@@ -209,10 +209,6 @@ package mongodbapi {
 
   sealed trait TypeMetadata[T, B <: BSONValue]
 
-  trait DocumentTypeMetadata[T] extends TypeMetadata[T, BSONDocument]
-
-  sealed trait NativeArrayElementTypeMetadata[T, B <: BSONValue] extends TypeMetadata[T, B]
-
   sealed trait BaseField {
     self: TypeMetadata[_, _] =>
     private[mongodbapi] val fieldName: String
@@ -220,11 +216,14 @@ package mongodbapi {
 
   class Field[T, B <: BSONValue](private[mongodbapi] val fieldName: String) extends TypeMetadata[T, B] with BaseField
 
-  class ArrayField[C <: Traversable[T], T, B <: BSONValue, TEmbedded <: TypeMetadata[T, B]](private[mongodbapi] val fieldName: String) extends TypeMetadata[T, B] with BaseField {
-    self: TEmbedded =>
-  }
+  class ArrayField[C <: Traversable[T], T, TElementMetadata <: TypeMetadata[T, B], B <: BSONValue]
+    (private[mongodbapi] val fieldName: String)
+    (implicit private[mongodbapi] val elementMetadata: TElementMetadata)
+    extends BaseField with TypeMetadata[C, BSONArray]
 
+  trait DocumentTypeMetadata[T] extends TypeMetadata[T, BSONDocument]
 
+  sealed trait NativeArrayElementTypeMetadata[T, B <: BSONValue] extends TypeMetadata[T, B]
   trait BSONObjectIDArrayElementTypeMetadata extends NativeArrayElementTypeMetadata[BSONObjectID, BSONObjectID]
   trait StringArrayElementTypeMetadata extends NativeArrayElementTypeMetadata[String, BSONString]
   trait IntArrayElementTypeMetadata extends NativeArrayElementTypeMetadata[Int, BSONInteger]
@@ -236,7 +235,16 @@ package mongodbapi {
 
 package object mongodbapi {
 
-  implicit class NativeArrayElementTypeMetadataQuery[T, B <: BSONValue](field: NativeArrayElementTypeMetadata[T, B])(implicit writer: BSONWriter[T, B]) {
+  implicit object BSONObjectIDArrayElementTypeMetadata extends BSONObjectIDArrayElementTypeMetadata
+  implicit object StringArrayElementTypeMetadata extends StringArrayElementTypeMetadata
+  implicit object IntArrayElementTypeMetadata extends IntArrayElementTypeMetadata
+  implicit object LongArrayElementTypeMetadata extends LongArrayElementTypeMetadata
+  implicit object DoubleArrayElementTypeMetadata extends DoubleArrayElementTypeMetadata
+  implicit object BooleanArrayElementTypeMetadata extends BooleanArrayElementTypeMetadata
+
+  implicit class NativeArrayElementTypeMetadataQuery[T, B <: BSONValue]
+    (field: NativeArrayElementTypeMetadata[T, B])
+    (implicit writer: BSONWriter[T, B]) {
     def ->(value: T): Expression = new Expression {
       def toBSON: BSONDocument = BSONDocument(Seq("$eq" -> writer.write(value)))
     }
@@ -249,7 +257,9 @@ package object mongodbapi {
     def $in(value: T, values: T*): Expression = $in(value +: values)
   }
 
-  implicit class FieldQuery[T, B <: BSONValue](field: Field[T, B])(implicit writer: BSONWriter[T, B]) {
+  implicit class FieldQuery[T, B <: BSONValue]
+    (field: Field[T, B])
+    (implicit writer: BSONWriter[T, B]) {
 
     def ->(value: T): Expression = Expression.$eq(field, writer.write(value))
     def $eq(value: T): Expression = Expression.$eq(field, writer.write(value))
@@ -276,18 +286,33 @@ package object mongodbapi {
 
   }
 
-  implicit class ArrayFieldQuery[C <: Traversable[T], T, B <: BSONValue, TEmbedded <: TypeMetadata[T, B]](field: ArrayField[C, T, B, TEmbedded] with TEmbedded)(implicit writer: BSONWriter[T, B]) {
+  implicit class ArrayFieldQuery[C <: Traversable[T], T, TElementMetadata <: TypeMetadata[T, B], B <: BSONValue]
+    (field: ArrayField[C, T, TElementMetadata, B])
+    (implicit writer: BSONWriter[T, B]) {
 
-    private def writeArray(arr: C) = BSONArray(arr.map(writer.write))
+    private def writeArray(arr: Traversable[T]) = BSONArray(arr.map(writer.write))
+
+    def ->(value: T): Expression = Expression.$eq(field, writer.write(value))
+    def $eq(value: T): Expression = ->(value)
 
     def ->(value: C): Expression = Expression.$eq(field, writeArray(value))
-    def $eq(value: C): Expression = Expression.$eq(field, writeArray(value))
+    def $eq(value: C): Expression = ->(value)
+
+    /**
+     * $in mag op verschillende manieren gebruikt worden op een array field
+     * field: { $in: [[1,2]] } zoekt op een array met exact waarde [1,2]
+     * field: { $in: [1,2] } zoekt op een array die een van de waardes 1 of 2 bevat
+     */
 
     def $in(values: Traversable[C]): Expression = Expression.$in(field, values.map(writeArray))
-    def $in(value: C, values: C*): Expression = $in(value +: values)
+    // Dit is een syntactic sugar overload zodat je  (arr1, arr2) kan typen ipv (List(arr1, arr2))
+    def $in(value: C, value2: C, values: C*): Expression = Expression.$in(field, (value +: (value2 +: values)).map(writeArray))
+    // De ClassTag is nodig zodat na type erasure er een verschil is met $in(values: Traversable[C])
+    def $in[X : scala.reflect.ClassTag](values: C): Expression = Expression.$in(field, values.map(writer.write))
 
     def $nin(values: Traversable[C]): Expression = Expression.$nin(field, values.map(writeArray))
-    def $nin(value: C, values: C*): Expression = $nin(value +: values)
+    def $nin(value: C, value2: C, values: C*): Expression = Expression.$nin(field, (value +: (value2 +: values)).map(writeArray))
+    def $nin[X : scala.reflect.ClassTag](values: C): Expression = Expression.$nin(field, values.map(writer.write))
 
     def $ne(value: T): Expression = Expression.$ne(field, writer.write(value))
     def $ne(value: C): Expression = Expression.$ne(field, writeArray(value))
@@ -296,7 +321,7 @@ package object mongodbapi {
 
     def $all(value: C): Expression = Expression.$all(field, writeArray(value))
 
-    def $elemMatch(query: TEmbedded => Expression): Expression = Expression.$elemMatch(field, query(field))
+    def $elemMatch(query: TElementMetadata => Expression): Expression = Expression.$elemMatch(field, query(field.elementMetadata))
 
     def $size(size: Int): Expression = Expression.$size(field, BSONInteger(size))
     def $size(size: Long): Expression = Expression.$size(field, BSONLong(size))

@@ -24,18 +24,24 @@ object generated {
     val value = new Field[String, BSONString]("value")
   }
 
+  implicit object PropertyDocumentMetadata extends PropertyDocumentMetadata
+
   trait CompanyDocumentMetadata extends DocumentTypeMetadata[Company] {
     val name = new Field[String, BSONString]("name")
     val country = new Field[String, BSONString]("country")
   }
 
+  implicit object CompanyDocumentMetadata extends CompanyDocumentMetadata
+
   trait ProductDocumentMetadata extends DocumentTypeMetadata[Product] {
     val _id = new Field[Int, BSONInteger]("_id")
     val name = new Field[String, BSONString]("name")
-    val properties = new ArrayField[List[Property], Property, BSONDocument, PropertyDocumentMetadata]("properties") with PropertyDocumentMetadata
+    val properties = new ArrayField[List[Property], Property, PropertyDocumentMetadata, BSONDocument]("properties")
     val madeBy = new Field[Company, BSONDocument]("madeBy") with CompanyDocumentMetadata
-    val sizes = new ArrayField[List[Int], Int, BSONInteger, IntArrayElementTypeMetadata]("sizes") with IntArrayElementTypeMetadata
+    val sizes = new ArrayField[List[Int], Int, IntArrayElementTypeMetadata, BSONInteger]("sizes")
   }
+
+  implicit class PropertyArray(a: ArrayField[List[Property], Property, PropertyDocumentMetadata, BSONDocument]) extends PropertyDocumentMetadata
 
   class ProductDocument(implicit writer: BSONWriter[Product, BSONDocument],
                         propertyWriter: BSONWriter[Property, BSONDocument],
