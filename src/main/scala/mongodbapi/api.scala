@@ -299,15 +299,19 @@ package object mongodbapi {
     def $eq(value: C): Expression = ->(value)
 
     /**
-     * $in mag op verschillende manieren gebruikt worden op een array field
-     * field: { $in: [[1,2]] } zoekt op een array met exact waarde [1,2]
-     * field: { $in: [1,2] } zoekt op een array die een van de waardes 1 of 2 bevat
+     * The $in expression accepts different values for an array field:
+     *  A) "field: { $in: [[1,2]] }" would look for an array which exactly matches the value [1,2]
+     *  B) "field: { $in: [1,2] }" would look for an array which has one of the values 1 or 2
+     * Same goes for $nin.
      */
 
+    // Implements A
     def $in(values: Traversable[C]): Expression = Expression.$in(field, values.map(writeArray))
-    // Dit is een syntactic sugar overload zodat je  (arr1, arr2) kan typen ipv (List(arr1, arr2))
+    // This overload is just syntactic sugar, so we can write (arr1, arr2) instead of (List(arr1, arr2))
+    // Implements A
     def $in(value: C, value2: C, values: C*): Expression = Expression.$in(field, (value +: (value2 +: values)).map(writeArray))
-    // De ClassTag is nodig zodat na type erasure er een verschil is met $in(values: Traversable[C])
+    // We need The ClassTag because after type erasure there would be no difference with $in(values: Traversable[C])
+    // Implements B
     def $in[X : scala.reflect.ClassTag](values: C): Expression = Expression.$in(field, values.map(writer.write))
 
     def $nin(values: Traversable[C]): Expression = Expression.$nin(field, values.map(writeArray))
