@@ -41,6 +41,10 @@ object generated {
     val sizes = new ArrayField[List[Int], Int, IntArrayElementTypeMetadata, BSONInteger]("sizes")
   }
 
+  // We need to extend the ArrayField with this implicit class because we can't mixin PropertyDocumentMetadata.
+  // That's because ArrayField (TypeMetadata[List[Property], BSONArray]) and PropertyDocumentMetadata
+  // (TypeMetadata[Property, BSONDocument]) have different TypeMetadata's. But we also want to be able to call
+  // all properties of the embedded type directly on the array: (array.embeddedField $in (1,2,3)).
   implicit class PropertyArray(a: ArrayField[List[Property], Property, PropertyDocumentMetadata, BSONDocument]) extends PropertyDocumentMetadata
 
   class ProductDocument(implicit writer: BSONWriter[Product, BSONDocument],

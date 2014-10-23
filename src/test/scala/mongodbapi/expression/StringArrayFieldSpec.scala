@@ -4,7 +4,7 @@ import org.scalacheck.Prop._
 import org.scalacheck.Properties
 import reactivemongo.bson._
 
-object StringArrayFieldSpec extends Properties("ArrayField[List[String], String, BSONString, TypeMetadata[String, BSONString]]") {
+object StringArrayFieldSpec extends Properties("ArrayField[List[String], String, TypeMetadata[String, BSONString], BSONString]") {
 
   import mongodbapi._
 

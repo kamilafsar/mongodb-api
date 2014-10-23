@@ -25,13 +25,9 @@ package mongodbapi {
     /**
      * Matches values that are equal to the value specified in the query.
      */
-    protected abstract class $eqBase[T, B <: BSONValue](field: BaseField with TypeMetadata[T, B], value: BSONValue) extends Expression {
+    case class $eq[T, B <: BSONValue](field: BaseField with TypeMetadata[T, B], value: BSONValue) extends Expression {
       lazy val toBSON: BSONDocument = BSONDocument(field.fieldName -> value)
     }
-
-    case class ->[T, B <: BSONValue](field: BaseField with TypeMetadata[T, B], value: BSONValue) extends $eqBase[T, B](field, value)
-
-    case class $eq[T, B <: BSONValue](field: BaseField with TypeMetadata[T, B], value: BSONValue) extends $eqBase[T, B](field, value)
 
     /**
      * $ne Matches all values that are not equal to the value specified in the query.
@@ -242,8 +238,8 @@ package object mongodbapi {
   implicit object DoubleArrayElementTypeMetadata extends DoubleArrayElementTypeMetadata
   implicit object BooleanArrayElementTypeMetadata extends BooleanArrayElementTypeMetadata
 
-  implicit class NativeArrayElementTypeMetadataQuery[T, B <: BSONValue]
-    (field: NativeArrayElementTypeMetadata[T, B])
+  implicit class TypeMetadataQuery[T, B <: BSONValue]
+    (field: TypeMetadata[T, B])
     (implicit writer: BSONWriter[T, B]) {
     def ->(value: T): Expression = new Expression {
       def toBSON: BSONDocument = BSONDocument(Seq("$eq" -> writer.write(value)))
@@ -275,7 +271,7 @@ package object mongodbapi {
     def $in(value: T, values: T*): Expression = $in(value +: values)
 
     def $nin(values: Traversable[T]): Expression = Expression.$nin(field , values.map(writer.write))
-    def $nin(value: T, values: T*): Expression = $in(value +: values)
+    def $nin(value: T, values: T*): Expression = $nin(value +: values)
 
     def $exists(exists: Boolean): Expression = Expression.$exists(field, BSONBoolean(exists))
 
