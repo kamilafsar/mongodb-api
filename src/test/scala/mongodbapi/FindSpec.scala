@@ -41,18 +41,14 @@ object generated {
     val sizes = new ArrayField[List[Int], Int, IntArrayElementTypeMetadata, BSONInteger]("sizes", parent)
   }
 
+  implicit object ProductDocument extends ProductDocumentMetadata(None)
+
   // We need to extend the ArrayField with this implicit class because we can't mixin PropertyDocumentMetadata.
   // That's because ArrayField (TypeMetadata[List[Property], BSONArray]) and PropertyDocumentMetadata
   // (TypeMetadata[Property, BSONDocument]) have different TypeMetadata's. But we also want to be able to call
   // all properties of the embedded type directly on the array: (array.embeddedField $in (1,2,3)).
   implicit class PropertyArray(a: ArrayField[List[Property], Property, PropertyDocumentMetadata, BSONDocument]) extends PropertyDocumentMetadata(Some(a))
   implicit class MadeByDocument(a: Field[Company, BSONDocument]) extends CompanyDocumentMetadata(Some(a))
-
-
-  class ProductDocument(implicit writer: BSONWriter[Product, BSONDocument],
-                        propertyWriter: BSONWriter[Property, BSONDocument],
-                        companyWriter: BSONWriter[Company, BSONDocument])
-    extends ProductDocumentMetadata(None)
 
 }
 
@@ -80,11 +76,11 @@ class FindSpec extends Specification with BSONMatchers {
   implicit val companyWriter = Macros.handler[Company]
   implicit val productWriter = Macros.handler[Product]
 
-  val queryGenerator = new QueryGenerator[ProductDocument](new ProductDocument)
+  val queryGenerator = new QueryGenerator[Product]
 
   "Collection must find documents" in {
 
-    val query = { product: ProductDocument =>
+    val query = { product: ProductDocumentMetadata =>
       (product.name -> "TV") &&
       (product.madeBy.name $in ("Samsung", "Philips")) &&
       (product.properties $elemMatch { property =>
