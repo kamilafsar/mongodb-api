@@ -4,20 +4,23 @@ import org.specs2.matcher.Matcher
 import org.specs2.mutable.Specification
 import reactivemongo.bson.{BSONArray, BSONValue, BSONDocument}
 
-trait BSONDocumentMatchers {
+trait BSONMatchers {
   self: Specification =>
 
-  def asMap: PartialFunction[BSONValue,Map[String, Any]] = {
-    case doc: BSONDocument =>
-      doc.elements.map {
-        case (key, value: BSONDocument) => key -> asMap(value)
-        case (key, value: BSONArray) => key -> Seq(value.values.map {
-          case arrVal: BSONDocument => asMap(arrVal)
-          case arrVal => arrVal
-        })
-        case element => element
-      }.toMap
-    case x => throw new Exception(s"asMap: conversion not supported on ${x.getClass.getName}")
+  def toList(doc: BSONDocument): List[(String, BSONValue)] = {
+    def toList(bson: BSONValue, prefix: String): List[(String, BSONValue)] = bson match {
+      case doc: BSONDocument =>
+        doc.elements.flatMap {
+          case (key, value) => toList(value, prefix + "." + key)
+        }.toList
+      case arr: BSONArray =>
+        arr.values.zipWithIndex.flatMap {
+          case (value, idx) => toList(value, prefix + "." + idx)
+        }.toList
+      case other =>
+        List(prefix -> other)
+    }
+    toList(doc, "")
   }
 
   /**
@@ -30,7 +33,8 @@ trait BSONDocumentMatchers {
    * TODO: this will only work for BSONDocuments, not BSONArray with objects within it
    */
   def bsonEqualTo(doc2: BSONDocument): Matcher[BSONDocument] = {
-    ((doc1: BSONDocument) => asMap(doc1)) ^^ beEqualTo(asMap(doc2))
+    ((doc1: BSONDocument) => toList(doc1)) ^^ beEqualTo(toList(doc2))
   }
+
 
 }

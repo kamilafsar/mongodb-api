@@ -19,42 +19,44 @@ case class Company(name: String, country: String)
  */
 object generated {
 
-  trait PropertyDocumentMetadata extends DocumentTypeMetadata[Property] {
-    val name = new Field[String, BSONString]("name")
-    val value = new Field[String, BSONString]("value")
+  class PropertyDocumentMetadata(parent: Option[BaseField]) extends DocumentTypeMetadata[Property] {
+    val name = new Field[String, BSONString]("name", parent)
+    val value = new Field[String, BSONString]("value", parent)
   }
 
-  implicit object PropertyDocumentMetadata extends PropertyDocumentMetadata
+  implicit object PropertyDocumentMetadata extends PropertyDocumentMetadata(None)
 
-  trait CompanyDocumentMetadata extends DocumentTypeMetadata[Company] {
-    val name = new Field[String, BSONString]("name")
-    val country = new Field[String, BSONString]("country")
+  class CompanyDocumentMetadata(parent: Option[BaseField]) extends DocumentTypeMetadata[Company] {
+    val name = new Field[String, BSONString]("name", parent)
+    val country = new Field[String, BSONString]("country", parent)
   }
 
-  implicit object CompanyDocumentMetadata extends CompanyDocumentMetadata
+  implicit object CompanyDocumentMetadata extends CompanyDocumentMetadata(None)
 
-  trait ProductDocumentMetadata extends DocumentTypeMetadata[Product] {
-    val _id = new Field[Int, BSONInteger]("_id")
-    val name = new Field[String, BSONString]("name")
-    val properties = new ArrayField[List[Property], Property, PropertyDocumentMetadata, BSONDocument]("properties")
-    val madeBy = new Field[Company, BSONDocument]("madeBy") with CompanyDocumentMetadata
-    val sizes = new ArrayField[List[Int], Int, IntArrayElementTypeMetadata, BSONInteger]("sizes")
+  class ProductDocumentMetadata(parent: Option[BaseField]) extends DocumentTypeMetadata[Product] {
+    val _id = new Field[Int, BSONInteger]("_id", parent)
+    val name = new Field[String, BSONString]("name", parent)
+    val properties = new ArrayField[List[Property], Property, PropertyDocumentMetadata, BSONDocument]("properties", parent)
+    val madeBy = new Field[Company, BSONDocument]("madeBy", parent)
+    val sizes = new ArrayField[List[Int], Int, IntArrayElementTypeMetadata, BSONInteger]("sizes", parent)
   }
 
   // We need to extend the ArrayField with this implicit class because we can't mixin PropertyDocumentMetadata.
   // That's because ArrayField (TypeMetadata[List[Property], BSONArray]) and PropertyDocumentMetadata
   // (TypeMetadata[Property, BSONDocument]) have different TypeMetadata's. But we also want to be able to call
   // all properties of the embedded type directly on the array: (array.embeddedField $in (1,2,3)).
-  implicit class PropertyArray(a: ArrayField[List[Property], Property, PropertyDocumentMetadata, BSONDocument]) extends PropertyDocumentMetadata
+  implicit class PropertyArray(a: ArrayField[List[Property], Property, PropertyDocumentMetadata, BSONDocument]) extends PropertyDocumentMetadata(Some(a))
+  implicit class MadeByDocument(a: Field[Company, BSONDocument]) extends CompanyDocumentMetadata(Some(a))
+
 
   class ProductDocument(implicit writer: BSONWriter[Product, BSONDocument],
                         propertyWriter: BSONWriter[Property, BSONDocument],
                         companyWriter: BSONWriter[Company, BSONDocument])
-    extends ProductDocumentMetadata
+    extends ProductDocumentMetadata(None)
 
 }
 
-class FindSpec extends Specification with BSONDocumentMatchers {
+class FindSpec extends Specification with BSONMatchers {
 
   /**
    * I want this syntax:
@@ -86,52 +88,42 @@ class FindSpec extends Specification with BSONDocumentMatchers {
       (product.name -> "TV") &&
       (product.madeBy.name $in ("Samsung", "Philips")) &&
       (product.properties $elemMatch { property =>
-        (property.name $eq "diagonal") &&
-        (property.value $eq "40")
+        (property.name -> "diagonal") &&
+        (property.value -> "40")
       }) &&
-      (product.properties.value $eq "red") &&
-      (product.sizes $eq 10) &&
-      (product.sizes $eq List(10, 20, 30)) &&
-      (product.sizes $elemMatch { _ $eq 10 })
+      (product.properties.value -> "red") &&
+      (product.sizes -> 10) &&
+      (product.sizes $in List(10, 20, 30)) &&
+      (product.sizes -> List(10, 20, 30)) &&
+      (product.sizes $elemMatch { size => (size $gt 10) && (size $lt 20) })
     }
 
     val FindQuery(criteria, projection) = queryGenerator.find(query)
 
-    ok
-//
-//
-//    println(BSONDocument.pretty(criteria))
-//
-//    println(BSONDocument.pretty(BSONDocument(
-//      "$and" -> BSONArray(
-//        BSONDocument("name" -> "TV"),
-//        BSONDocument("madeBy.name" -> BSONDocument("$in" -> BSONArray("Samsung", "Philips"))),
-//        BSONDocument("properties" -> BSONDocument(
-//          "$elemMatch" -> BSONDocument(
-//            "$and" -> BSONArray(
-//              BSONDocument("name" -> "diagonal"),
-//              BSONDocument("value" -> "40")
-//            ))
-//        )),
-//        BSONDocument("properties.value" -> "red")
-//      )
-//    )))
-//
-//    criteria must bsonEqualTo(BSONDocument(
-//      "$and" -> BSONArray(
-//        BSONDocument("name" -> "TV"),
-//        BSONDocument("madeBy.name" -> BSONDocument("$in" -> BSONArray("Samsung", "Philips"))),
-//        BSONDocument("properties" -> BSONDocument(
-//          "$elemMatch" -> BSONDocument(
-//            "$and" -> BSONArray(
-//              BSONDocument("name" -> "diagonal"),
-//              BSONDocument("value" -> "40")
-//          ))
-//        )),
-//        BSONDocument("properties.value" -> "red")
-//      )
-//    ))
-//
+    val expected = BSONDocument(
+      "$and" -> BSONArray(
+        BSONDocument("name" -> "TV"),
+        BSONDocument("madeBy.name" -> BSONDocument("$in" -> BSONArray("Samsung", "Philips"))),
+        BSONDocument("properties" -> BSONDocument(
+          "$elemMatch" -> BSONDocument(
+            "$and" -> BSONArray(
+              BSONDocument("name" -> "diagonal"),
+              BSONDocument("value" -> "40")
+          ))
+        )),
+        BSONDocument("properties.value" -> "red"),
+        BSONDocument("sizes" -> BSONInteger(10)),
+        BSONDocument("sizes" -> BSONDocument("$in" -> BSONArray(BSONInteger(10), BSONInteger(20), BSONInteger(30)))),
+        BSONDocument("sizes" -> BSONArray(BSONInteger(10), BSONInteger(20), BSONInteger(30))),
+        BSONDocument("sizes" -> BSONDocument("$elemMatch" -> BSONDocument(
+        "$and" -> BSONArray(
+          BSONDocument("$gt" -> BSONInteger(10)),
+          BSONDocument("$lt" -> BSONInteger(20))
+        ))))
+      )
+    )
+
+    criteria must bsonEqualTo(expected)
   }
 
 

@@ -205,17 +205,20 @@ package mongodbapi {
 
   sealed trait TypeMetadata[T, B <: BSONValue]
 
-  sealed trait BaseField {
+  abstract class BaseField(name: String, parent: Option[BaseField]) {
     self: TypeMetadata[_, _] =>
-    private[mongodbapi] val fieldName: String
+
+    private[mongodbapi] val fieldName: String = {
+      parent.map(_.fieldName + ".").getOrElse("") + name
+    }
   }
 
-  class Field[T, B <: BSONValue](private[mongodbapi] val fieldName: String) extends TypeMetadata[T, B] with BaseField
+  class Field[T, B <: BSONValue](name: String, parent: Option[BaseField]) extends BaseField(name, parent) with TypeMetadata[T, B]
 
   class ArrayField[C <: Traversable[T], T, TElementMetadata <: TypeMetadata[T, B], B <: BSONValue]
-    (private[mongodbapi] val fieldName: String)
+    (name: String, parent: Option[BaseField])
     (implicit private[mongodbapi] val elementMetadata: TElementMetadata)
-    extends BaseField with TypeMetadata[C, BSONArray]
+    extends BaseField(name, parent) with TypeMetadata[C, BSONArray]
 
   trait DocumentTypeMetadata[T] extends TypeMetadata[T, BSONDocument]
 
@@ -242,15 +245,22 @@ package object mongodbapi {
     (field: TypeMetadata[T, B])
     (implicit writer: BSONWriter[T, B]) {
     def ->(value: T): Expression = new Expression {
-      def toBSON: BSONDocument = BSONDocument(Seq("$eq" -> writer.write(value)))
+      def toBSON: BSONDocument = BSONDocument("$eq" -> value)
     }
     def $eq(value: T): Expression = new Expression {
-      def toBSON: BSONDocument = BSONDocument(Seq("$eq" -> writer.write(value)))
+      def toBSON: BSONDocument = BSONDocument("$eq" -> value)
     }
     def $in(values: Traversable[T]): Expression = new Expression {
-      def toBSON: BSONDocument = BSONDocument("$in" -> BSONArray(values.map(writer.write)))
+      def toBSON: BSONDocument = BSONDocument("$in" -> values)
     }
     def $in(value: T, values: T*): Expression = $in(value +: values)
+
+    def $gt(value: T): Expression = new Expression {
+      def toBSON: BSONDocument = BSONDocument("$gt" -> value)
+    }
+    def $lt(value: T): Expression = new Expression {
+      def toBSON: BSONDocument = BSONDocument("$lt" -> value)
+    }
   }
 
   implicit class FieldQuery[T, B <: BSONValue]

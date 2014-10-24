@@ -16,31 +16,36 @@ object EmbeddedDocumentArraySpec extends Properties("ArrayField[List[MyClass2], 
   implicit val propertyHandler = Macros.handler[Property]
   implicit val productHandler = Macros.handler[Product]
 
-  trait PropertyTypeDocumentMetadata extends DocumentTypeMetadata[PropertyType] {
-    val name = new Field[String, BSONString]("name")
+  class PropertyTypeDocumentMetadata(parent: Option[BaseField]) extends DocumentTypeMetadata[PropertyType] {
+    val name = new Field[String, BSONString]("name", parent)
   }
 
-  implicit object PropertyTypeDocumentMetadata extends PropertyTypeDocumentMetadata
-
-  trait PropertyDocumentMetadata extends DocumentTypeMetadata[Property] {
-    val name = new Field[String, BSONString]("name")
-    val value = new Field[String, BSONString]("value")
-    val propertyType = new Field[PropertyType, BSONDocument]("propertyType") with PropertyTypeDocumentMetadata
+  class PropertyDocumentMetadata(parent: Option[BaseField]) extends DocumentTypeMetadata[Property] {
+    val name = new Field[String, BSONString]("name", parent)
+    val value = new Field[String, BSONString]("value", parent)
+    val propertyType = new Field[PropertyType, BSONDocument]("propertyType", parent)
   }
 
-  implicit object PropertyDocumentMetadata extends PropertyDocumentMetadata
-
-  trait ProductDocumentMetadata extends DocumentTypeMetadata[Product] {
-    val _id = new Field[Int, BSONInteger]("_id")
-    val properties = new ArrayField[List[Property], Property, PropertyDocumentMetadata, BSONDocument]("properties")
+  class ProductDocumentMetadata(parent: Option[BaseField]) extends DocumentTypeMetadata[Product] {
+    val _id = new Field[Int, BSONInteger]("_id", parent)
+    val properties = new ArrayField[List[Property], Property, PropertyDocumentMetadata, BSONDocument]("properties", parent)
+    val upPropertyType = new Field[PropertyType, BSONDocument]("propertyType", parent)
   }
 
-  implicit class PropertyArray(a: ArrayField[List[Property], Property, PropertyDocumentMetadata, BSONDocument]) extends PropertyDocumentMetadata
+
+  implicit object PropertyTypeDocumentMetadata extends PropertyTypeDocumentMetadata(None)
+  implicit object PropertyDocumentMetadata extends PropertyDocumentMetadata(None)
+
+
+  implicit class PropertyArray(a: ArrayField[List[Property], Property, PropertyDocumentMetadata, BSONDocument]) extends PropertyDocumentMetadata(Some(a))
+
+  implicit class PropertyTypeDocument(a: Field[PropertyType, BSONDocument]) extends PropertyTypeDocumentMetadata(Some(a))
+
 
   class ProductDocument(implicit writer: BSONWriter[Product, BSONDocument],
                         propertyWriter: BSONWriter[Property, BSONDocument],
                         propertyTypeWriter: BSONWriter[PropertyType, BSONDocument])
-    extends ProductDocumentMetadata
+    extends ProductDocumentMetadata(None)
 
 
   implicit val genProperty = Arbitrary[Property] {
@@ -60,27 +65,21 @@ object EmbeddedDocumentArraySpec extends Properties("ArrayField[List[MyClass2], 
 
 
   property("->") = forAll { (fieldValue: String) =>
-
     val expr = ({ product: ProductDocument =>
       product.properties.propertyType.name $eq fieldValue
     })(new ProductDocument)
 
     val expected = BSONDocument(s"properties.propertyType.name" -> fieldValue)
 
-    println(BSONDocument.pretty(expr.toBSON))
-    println(BSONDocument.pretty(expected))
-
     expr.toBSON == expected
   }
 
   property("$elemMatch") = forAll { (propertyNameValue: String) =>
-
     val expr = ({ product: ProductDocument =>
       product.properties $elemMatch { property =>
         property.name $eq propertyNameValue
       }
     })(new ProductDocument)
-
 
     val expected = BSONDocument("properties" -> BSONDocument("$elemMatch" -> BSONDocument("name" -> propertyNameValue)))
 
@@ -88,18 +87,14 @@ object EmbeddedDocumentArraySpec extends Properties("ArrayField[List[MyClass2], 
   }
 
   property("$elemMatch") = forAll { (propertyTypeValue: String) =>
-
     val expr = ({ product: ProductDocument =>
       product.properties $elemMatch { property =>
         property.propertyType.name $eq propertyTypeValue
       }
     })(new ProductDocument)
 
-
     val expected = BSONDocument("properties" -> BSONDocument("$elemMatch" -> BSONDocument("propertyType.name" -> propertyTypeValue)))
 
-//    println(BSONDocument.pretty(expr.toBSON))
-//    println(BSONDocument.pretty(expected))
     expr.toBSON == expected
   }
 

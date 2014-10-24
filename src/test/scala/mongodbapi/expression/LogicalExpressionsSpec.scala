@@ -12,11 +12,11 @@ object LogicalExpressionsSpec extends Properties("LogicalExpressions") {
 
   implicit val myClassHandler = Macros.handler[MyClass]
 
-  trait MyClassMetadata extends DocumentTypeMetadata[MyClass] {
-    val myProperty = new Field[String, BSONString]("myProperty")
+  class MyClassMetadata(parent: Option[BaseField]) extends DocumentTypeMetadata[MyClass] {
+    val myProperty = new Field[String, BSONString]("myProperty", parent)
   }
 
-  implicit object MyClassMetadata extends MyClassMetadata
+  implicit object MyClassMetadata extends MyClassMetadata(None)
 
   implicit val genMyClass = Arbitrary[MyClass] {
     for (myProperty <- Arbitrary.arbitrary[String])
@@ -26,9 +26,9 @@ object LogicalExpressionsSpec extends Properties("LogicalExpressions") {
   property("$and") = forAll { (fieldName1: String, fieldValue1: String,
                                fieldName2: String, fieldValue2: MyClass,
                                fieldName3: String, fieldValue3: Int) =>
-    val field1 = new Field[String, BSONString](fieldName1)
-    val field2 = new Field[MyClass, BSONDocument](fieldName2)
-    val field3 = new Field[Int, BSONInteger](fieldName3)
+    val field1 = new Field[String, BSONString](fieldName1, None)
+    val field2 = new Field[MyClass, BSONDocument](fieldName2, None)
+    val field3 = new Field[Int, BSONInteger](fieldName3, None)
 
     val expr = ((field1 $eq fieldValue1) && (field2 $eq fieldValue2) && (field3 $eq fieldValue3))
 
@@ -44,9 +44,9 @@ object LogicalExpressionsSpec extends Properties("LogicalExpressions") {
   property("$or") = forAll { (fieldName1: String, fieldValue1: String,
                                fieldName2: String, fieldValue2: MyClass,
                                fieldName3: String, fieldValue3: Int) =>
-    val field1 = new Field[String, BSONString](fieldName1)
-    val field2 = new Field[MyClass, BSONDocument](fieldName2)
-    val field3 = new Field[Int, BSONInteger](fieldName3)
+    val field1 = new Field[String, BSONString](fieldName1, None)
+    val field2 = new Field[MyClass, BSONDocument](fieldName2, None)
+    val field3 = new Field[Int, BSONInteger](fieldName3, None)
 
     val expr = ((field1 $eq fieldValue1) || (field2 $eq fieldValue2) || (field3 $eq fieldValue3))
 
