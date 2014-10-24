@@ -122,6 +122,11 @@ class FindSpec extends Specification with BSONMatchers {
     criteria must bsonEqualTo(expected)
   }
 
+  "MacroTest" in {
+    val meta = MongoMacros.generateMetadata[Company]
+    meta.kaas must beEqualTo("hoi")
+  }
+
 
 
 }
